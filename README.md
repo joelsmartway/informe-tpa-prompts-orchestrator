@@ -44,118 +44,58 @@ Ambos usan **la misma** arquitectura nueva por debajo — V11 simplemente ejecut
 
 ---
 
+
 ## 4. Modelo C4 — Nueva arquitectura
 
-### Nivel 1 — Contexto del sistema
+**Contexto:** quién usa el sistema y con qué se integra.
 
 ```mermaid
 C4Context
-    title Agente TPA — Contexto del sistema
-
-    Person(coach, "Coach TPA / Team Lead", "Lanza sesiones y revisa los informes")
-    Person(admin, "Admin SmartWay", "Ajusta prompts y monitoriza calidad")
-
-    System(tpa, "Plataforma TPA", "Evaluación de desempeño de equipos con informes generados por IA (V10/V11)")
-
-    System_Ext(openai, "OpenAI API", "Proveedor LLM para los sub-agentes")
-    System_Ext(pg, "PostgreSQL", "Sesiones, respuestas, informes y traza de auditoría")
-
-    Rel(coach, tpa, "Lanza cuestionarios, lee informes, descarga PDF")
-    Rel(admin, tpa, "Edita prompts, revisa la auditoría pipeline_steps")
-    Rel(tpa, openai, "Llamadas de sub-agente (JSON-mode)")
-    Rel(tpa, pg, "Persiste pasos, informes y chunks RAG")
+    Person(coach, "Coach / Team Lead", "Lanza sesiones y lee informes")
+    System(tpa, "Plataforma TPA", "Informes generados por IA (V10/V11)")
+    System_Ext(openai, "OpenAI API", "LLM")
+    System_Ext(pg, "PostgreSQL", "Datos y auditoría")
+    Rel(coach, tpa, "Usa")
+    Rel(tpa, openai, "Llama sub-agentes")
+    Rel(tpa, pg, "Persiste")
 ```
 
-### Nivel 2 — Contenedores
+**Contenedores:** las piezas internas de la plataforma.
 
 ```mermaid
 C4Container
-    title Agente TPA — Contenedores
-
     Person(coach, "Coach / TL")
-
-    Container_Boundary(tpa, "Plataforma TPA") {
-        Container(spa, "Frontend SPA", "Vue 3 + TS", "Vistas de resultados V8/V9/V10/V11 y descarga PDF")
-        Container(api, "API", "Go (Gin)", "REST API, rutas /v2/agent/{v8,v9,v10,v11}")
-        Container(orch, "Orquestador del agente", "Paquete Go", "Ejecuta el grafo del pipeline y persiste los pasos")
-        Container(skills, "Registro de skills", "Paquete Go", "Cálculos deterministas (TPI, Lencioni, Tuckman, Role, Systemic)")
-        Container(rag, "Thesis RAG", "Go + Postgres", "Recupera fragmentos del marco TPA por tema")
-        Container(pdf, "Renderizador PDF", "Go (gofpdf)", "Renderiza los informes V10/V11 a PDF con marca")
-    }
-
-    System_Ext(openai, "OpenAI API")
+    Container(spa, "Frontend SPA", "Vue 3", "Vistas + descarga PDF")
+    Container(api, "API", "Go (Gin)", "REST /v2/agent")
+    Container(orch, "Orquestador", "Go", "Ejecuta pipeline + skills + RAG + PDF")
     SystemDb_Ext(pg, "PostgreSQL")
-
+    System_Ext(openai, "OpenAI API")
     Rel(coach, spa, "HTTPS")
-    Rel(spa, api, "REST + Blob (PDF)")
-    Rel(api, orch, "Ejecuta pipeline V10/V11")
-    Rel(orch, skills, "Invoca skill")
-    Rel(orch, rag, "Recupera chunks de grounding")
-    Rel(orch, openai, "Llamada LLM al sub-agente")
-    Rel(orch, pg, "pipeline_steps + agent_results")
-    Rel(api, pdf, "Genera PDF (variante)")
+    Rel(spa, api, "REST")
+    Rel(api, orch, "Ejecuta V10/V11")
+    Rel(orch, openai, "Sub-agentes")
+    Rel(orch, pg, "Pasos + informes")
 ```
 
-### Nivel 3 — Componentes (orquestador)
-
-```mermaid
-C4Component
-    title Orquestador del agente — Componentes (V10 único / V11 dual)
-
-    Container_Boundary(orch, "Orquestador del agente") {
-        Component(ctrl, "Controlador V10/V11", "Go", "Punto de entrada; cablea sub-agentes, overrides de modelo y registries")
-        Component(graph, "Pipeline Runner", "Go", "Ejecuta el grafo de pasos; reanudar-en-fallo; cachea por paso")
-        Component(diag, "Sub-agente: Diagnóstico", "LLM JSON", "Extrae findings de los scores brutos")
-        Component(thesis, "Sub-agente: Tesis", "LLM JSON", "Construye una hipótesis fundamentada usando hits del RAG")
-        Component(interp, "Sub-agente: Interpretación", "LLM JSON", "Solo V11 — puente entre diagnóstico y narrativa")
-        Component(repTech, "Sub-agente: Informe técnico", "LLM markdown", "V10: informe completo. V11: informe de profundidad técnica")
-        Component(repTeam, "Sub-agente: Informe de equipo", "LLM markdown", "Solo V11 — informe orientado a acción")
-        Component(qaTech, "Sub-agente: QA técnico", "LLM JSON", "Puntúa el informe, marca issues y dispara regen")
-        Component(qaTeam, "Sub-agente: QA equipo", "LLM JSON", "Solo V11 — QA independiente para la variante de equipo")
-        Component(proj, "Proyector de estado", "Go", "Mapea las salidas de pasos a AgentReportResponse{V10,V11}")
-    }
-
-    ComponentDb(steps, "pipeline_steps", "Postgres", "Auditoría por paso (input, output, modelo, tokens, latencia)")
-    ComponentDb(results, "agent_results", "Postgres", "Informes finales por versión (v8/v9/v10/v11)")
-
-    Rel(ctrl, graph, "Run(pipeline_def)")
-    Rel(graph, diag, "1. diagnóstico")
-    Rel(graph, thesis, "2. tesis")
-    Rel(graph, interp, "3. interpretación (V11)")
-    Rel(graph, repTech, "4. informe técnico")
-    Rel(graph, qaTech, "5. QA técnico — bucle ≤2 si falla")
-    Rel(graph, repTeam, "6. informe equipo (V11)")
-    Rel(graph, qaTeam, "7. QA equipo — bucle ≤2 si falla (V11)")
-    Rel(graph, steps, "Persiste cada paso")
-    Rel(graph, proj, "Proyecta el estado final")
-    Rel(proj, results, "Guarda el informe")
-```
-
-### Nivel 4 — Flujo del pipeline
+**Flujo del pipeline:** qué hace cada ejecución.
 
 ```mermaid
 flowchart LR
-    A[Respuestas de sesión] --> B[Skills: TPI / Lencioni / Tuckman / Role / Systemic]
-    B --> C[Diagnóstico]
-    C --> D[Tesis + Hits RAG]
-    D -- V11 --> E[Interpretación]
-    D -- V10 --> F1[Informe]
-    E --> F1[Informe técnico]
-    F1 --> G1{QA}
-    G1 -- falla ≤2 --> F1
-    G1 -- pasa --> H1[(Persistir)]
-    E --> F2[Informe de equipo]
-    F2 --> G2{QA}
-    G2 -- falla ≤2 --> F2
-    G2 -- pasa --> H2[(Persistir)]
-    H1 --> I[Renderizador PDF]
-    H2 --> I
-    I --> J[Descarga frontend]
+    A[Respuestas] --> B[Skills + Diagnóstico + Tesis RAG]
+    B -- V10 --> R1[Informe] --> Q1{QA}
+    Q1 -- falla ≤2 --> R1
+    Q1 -- pasa --> P[(Persistir + PDF)]
+    B -- V11 --> R2[Informe técnico] --> Q2{QA}
+    Q2 -- falla ≤2 --> R2
+    Q2 -- pasa --> P
+    B -- V11 --> R3[Informe equipo] --> Q3{QA}
+    Q3 -- falla ≤2 --> R3
+    Q3 -- pasa --> P
 ```
 
 ---
 
-## 5. Notas de riesgo y coste para el PM
+## 5. Notas de riesgo y coste
 
 - **Presupuesto de tokens:** una ejecución V11 ≈ 7 llamadas LLM frente a 1 en V8. Lo compensamos con (a) prompts más pequeños por paso, (b) pasos cacheados en los reintentos, y (c) regeneración solo del informe que falla, no de todo el pipeline. El coste neto es comparable; **el coste del fallo cae bruscamente**.
 - **Latencia:** V11 es secuencial por diseño (cada paso necesita el anterior). El tiempo total ronda 1,5–2× la pared de V8, pero el usuario ve una sola UI de progreso; en una iteración futura podemos paralelizar diagnóstico y skills.
@@ -170,3 +110,4 @@ flowchart LR
 2. Paralelizar pasos independientes (diagnóstico ‖ skills) para recortar ~25% de la latencia de V11.
 3. Exponer el Prompt Lab a los admins TPA para experimentación de prompts por paso sin necesidad de dev.
 4. Añadir dashboards de coste basados en `pipeline_steps.tokens_in/out` por versión.
+
