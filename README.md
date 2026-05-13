@@ -1,11 +1,6 @@
 # Agente TPA — Nueva arquitectura V10 y V11
 
-**Audiencia:** Product Manager
-**Resumen:** Hemos reconstruido el agente de informes del TPA sobre un pipeline modular y auditable. **V10** es la versión en la nueva arquitectura del antiguo informe único **V9**. **V11** es la versión en la nueva arquitectura del antiguo informe dual **V8**. Mismo output de negocio, mejora drástica en ingeniería y operación.
-
----
-
-## 1. Qué cambia en un párrafo
+## 1. Qué cambia 
 
 Los agentes V8/V9 eran una sola llamada LLM monolítica con un prompt gigante. Los nuevos V10/V11 son **pipelines orquestados**: una secuencia de sub-agentes pequeños y especializados, cada uno con una única responsabilidad (diagnóstico → tesis → informe → auto-auditoría), apoyados en **skills deterministas** para cálculos y lookups y en una capa **Thesis-RAG** que fundamenta la narrativa con el marco teórico TPA. Cada paso se **persiste**, lo que permite reanudar, auditar y regenerar de forma selectiva.
 
